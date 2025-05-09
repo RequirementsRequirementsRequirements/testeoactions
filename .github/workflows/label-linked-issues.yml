@@ -37,6 +37,6 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: Number(issue_number),
-                labels: ['in progress']  // Cambia por la etiqueta que desees
+                labels: ['bug']  // Cambia por la etiqueta que desees
               });
             }
