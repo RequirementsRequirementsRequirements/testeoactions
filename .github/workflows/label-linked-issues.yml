@@ -22,7 +22,7 @@ jobs:
               sha: context.sha
             });
 
-            const issuePattern = /#(\d+)/g;
+            const issuePattern = /(?:#|gh-)(\d+)/gi;
             const issueNumbers = new Set();
 
             for (const commit of commitMessages.data) {
