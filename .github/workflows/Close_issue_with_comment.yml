@@ -1,0 +1,37 @@
+name: Close issue on specific comment
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  close-and-label:
+    if: github.event.issue.pull_request == null  # only run on issues, not PRs
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write  # Needed to close and label issues
+
+    steps:
+      - name: Close and label issue on keyword
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body.trim().toLowerCase();
+
+            if (comment.includes('issue closed')) {
+              // Close the issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                state: 'closed',
+              });
+
+              // Add label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                labels: ['duplicate']  // Change label name as needed
+              });
+            }
