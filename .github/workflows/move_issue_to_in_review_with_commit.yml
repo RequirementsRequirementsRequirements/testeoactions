@@ -17,20 +17,20 @@ jobs:
         with:
           script: |
             const issuePattern = /(?:#|gh-)(\d+)/gi;
-            const projectId = "PVT_kwHODArNsc4A4n6f"; // your project ID
-            const fieldId = "PVTSSF_lAHODArNsc4A4n6fzgtj29U"; // Status field ID
-            const inReviewOptionId = "df73e18b"; // "In review" option ID
-
+            const projectId = "PVT_kwHODArNsc4A4n6f";  // Use your Project v2 ID here if it's a Project v2
+            const fieldId = "PVTSSF_lAHODArNsc4A4n6fzgtj29U";  // Field ID
+            const inReviewOptionId = "df73e18b";  // Option ID for "In review"
+            
             const commits = context.payload.commits;
             const issueNumbers = new Set();
-
+            
             for (const commit of commits) {
               let match;
               while ((match = issuePattern.exec(commit.message)) !== null) {
                 issueNumbers.add(Number(match[1]));
               }
             }
-
+            
             if (issueNumbers.size === 0) {
               console.log("No referenced issues found.");
               return;
@@ -45,7 +45,7 @@ jobs:
             for (const issueNumber of issueNumbers) {
               console.log(`🔍 Processing issue #${issueNumber}`);
 
-              // Step 1: Get issue's node ID
+              // Fetch issue data and find item in project
               const issueData = await graphqlWithAuth(`
                 query($owner: String!, $repo: String!, $issue: Int!) {
                   repository(owner: $owner, name: $repo) {
@@ -62,7 +62,7 @@ jobs:
 
               const issueId = issueData.repository.issue.id;
 
-              // Step 2: Find item in project by matching issue number
+              // Fetch project items and match the issue number
               const itemsData = await graphqlWithAuth(`
                 query($projectId: ID!) {
                   node(id: $projectId) {
