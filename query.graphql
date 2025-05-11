@@ -1,0 +1,22 @@
+{
+  user(login: "RequirementsRequirementsRequirements") {
+    projectsV2(first: 10) {
+      nodes {
+        id
+        title
+        fields(first: 20) {
+          nodes {
+            ... on ProjectV2SingleSelectField {
+              id
+              name
+              options {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
