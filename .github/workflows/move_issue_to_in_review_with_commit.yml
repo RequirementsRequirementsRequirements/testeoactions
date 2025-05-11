@@ -11,7 +11,6 @@ jobs:
     permissions:
       issues: write
       contents: read
-      projects: write
 
     steps:
       - name: Move issue cards to "In review"
