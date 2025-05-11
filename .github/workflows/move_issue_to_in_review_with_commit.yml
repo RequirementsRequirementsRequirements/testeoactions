@@ -32,52 +32,53 @@ jobs:
               }
             }
 
+            if (issueNumbers.size === 0) {
+              console.log("No referenced issues found in commit messages.");
+              return;
+            }
+
+            // Get repo projects
+            const { data: projects } = await github.rest.projects.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const project = projects.find(p => p.name.toLowerCase() === projectName.toLowerCase());
+            if (!project) {
+              core.setFailed(`Project "${projectName}" not found.`);
+              return;
+            }
+
+            // Get all columns in the project
+            const { data: columns } = await github.rest.projects.listColumns({
+              project_id: project.id
+            });
+
+            const targetCol = columns.find(c => c.name.toLowerCase() === targetColumn.toLowerCase());
+            if (!targetCol) {
+              core.setFailed(`Target column "${targetColumn}" not found.`);
+              return;
+            }
+
+            // Look through ALL columns to find matching issue card
             for (const issueNumber of issueNumbers) {
-              // Get all projects for this repo
-              const { data: projects } = await github.rest.projects.listForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo
-              });
-
-              const project = projects.find(p => p.name.toLowerCase() === projectName.toLowerCase());
-              if (!project) {
-                core.warning(`Project "${projectName}" not found`);
-                continue;
-              }
-
-              // Get columns for the project
-              const { data: columns } = await github.rest.projects.listColumns({
-                project_id: project.id
-              });
-
-              const column = columns.find(c => c.name.toLowerCase() === targetColumn.toLowerCase());
-              if (!column) {
-                core.warning(`Column "${targetColumn}" not found`);
-                continue;
-              }
-
-              // Find project card for the issue
-              const { data: cards } = await github.rest.projects.listCards({
-                column_id: column.id
-              });
-
               let cardFound = false;
 
               for (const col of columns) {
-                const { data: cardsInCol } = await github.rest.projects.listCards({
+                const { data: cards } = await github.rest.projects.listCards({
                   column_id: col.id
                 });
 
-                for (const card of cardsInCol) {
+                for (const card of cards) {
                   if (card.content_url && card.content_url.endsWith(`/issues/${issueNumber}`)) {
-                    cardFound = true;
                     // Move the card
                     await github.rest.projects.moveCard({
                       card_id: card.id,
                       position: 'top',
-                      column_id: column.id
+                      column_id: targetCol.id
                     });
                     console.log(`Moved issue #${issueNumber} to "${targetColumn}"`);
+                    cardFound = true;
                     break;
                   }
                 }
@@ -86,6 +87,6 @@ jobs:
               }
 
               if (!cardFound) {
-                console.log(`No project card found for issue #${issueNumber}`);
+                console.log(`No card found for issue #${issueNumber}. Is it added to the project "${projectName}"?`);
               }
             }
