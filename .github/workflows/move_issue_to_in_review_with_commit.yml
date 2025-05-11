@@ -1,26 +1,25 @@
-name: Move issue to "In review" when referenced
+name: Move issue to "In review" in Projects v2
 
 on:
   push:
     branches:
-      - main  # Or your working branch
+      - main  # Or your active branch
 
 jobs:
-  move-to-in-review:
+  update-project-status:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      contents: read
 
     steps:
-      - name: Move issue cards to "In review"
+      - name: Update Project field to "In review" for referenced issues
+        env:
+          GH_TOKEN: ${{ secrets.GH_PROJECTS_TOKEN }}
         uses: actions/github-script@v7
         with:
           script: |
             const issuePattern = /(?:#|gh-)(\d+)/gi;
-            const projectName = 'testeo actions';
-            const targetColumnName = 'In review';
-
+            const projectId = "PVT_kwHODArNsc4A4n6f";
+            const fieldId = "PVTSSF_lAHODArNsc4A4n6fzgtj29U";
+            const inReviewOptionId = "df73e18b";
             const commits = context.payload.commits;
             const issueNumbers = new Set();
 
@@ -36,56 +35,48 @@ jobs:
               return;
             }
 
-            const { data: projects } = await github.rest.projects.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo
+            const graphqlWithAuth = github.graphql.defaults({
+              headers: {
+                authorization: `Bearer ${process.env.GH_TOKEN}`,
+              },
             });
-
-            const project = projects.find(p => p.name.toLowerCase() === projectName.toLowerCase());
-            if (!project) {
-              core.setFailed(`Project "${projectName}" not found.`);
-              return;
-            }
-
-            const { data: columns } = await github.rest.projects.listColumns({
-              project_id: project.id
-            });
-
-            const targetColumn = columns.find(c => c.name.toLowerCase() === targetColumnName.toLowerCase());
-            if (!targetColumn) {
-              core.setFailed(`Column "${targetColumnName}" not found.`);
-              return;
-            }
 
             for (const issueNumber of issueNumbers) {
-              console.log(`Processing issue #${issueNumber}...`);
-
-              let cardMoved = false;
-
-              for (const column of columns) {
-                const { data: cards } = await github.rest.projects.listCards({
-                  column_id: column.id
-                });
-
-                for (const card of cards) {
-                  if (card.content_url && card.content_url.endsWith(`/issues/${issueNumber}`)) {
-                    console.log(`Found card for issue #${issueNumber} in column "${column.name}". Moving to "${targetColumnName}"...`);
-
-                    await github.rest.projects.moveCard({
-                      card_id: card.id,
-                      position: 'top',
-                      column_id: targetColumn.id
-                    });
-
-                    cardMoved = true;
-                    break;
+              // Get node ID of the issue
+              const issueData = await graphqlWithAuth(`
+                query($owner: String!, $repo: String!, $issue: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    issue(number: $issue) {
+                      id
+                    }
                   }
                 }
+              `, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue: issueNumber
+              });
 
-                if (cardMoved) break;
-              }
+              const issueId = issueData.repository.issue.id;
 
-              if (!cardMoved) {
-                console.log(`No project card found for issue #${issueNumber}.`);
-              }
+              console.log(`Setting status of issue #${issueNumber} to "In review"`);
+
+              await graphqlWithAuth(`
+                mutation {
+                  updateProjectV2ItemFieldValue(
+                    input: {
+                      projectId: "${projectId}",
+                      itemId: "${issueId}",
+                      fieldId: "${fieldId}",
+                      value: {
+                        singleSelectOptionId: "${inReviewOptionId}"
+                      }
+                    }
+                  ) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `);
             }
