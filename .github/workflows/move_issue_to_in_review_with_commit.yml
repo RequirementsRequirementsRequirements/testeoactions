@@ -10,166 +10,95 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Update Project field to "In review" for referenced issues (with debug)
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN_ACTIONS_3 }}
-        uses: actions/github-script@v7
-        with:
-          script: |
+            - name: Move issue to "In review"
+              env:
+                GH_TOKEN: ${{ secrets.GH_TOKEN_ACTIONS_3 }}
+              uses: actions/github-script@v7
+              with:
+                script: |
+                  const issuePattern = /(?:#|gh-)(\d+)/gi;
+                  const projectId = "PVT_kwDODJdNvM4A4wSl";
+                  const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";
+                  const inReviewOptionId = "df73e18b";
+                  const commits = context.payload.commits;
+                  const issueNumbers = new Set();
 
-            console.log("🔐 Token prefix:", process.env.GH_TOKEN?.slice(0, 8));
-
-            const issuePattern = /(?:#|gh-)(\d+)/gi;
-            const projectId = "PVT_kwDODJdNvM4A4wSl";
-            const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";
-            const inReviewOptionId = "df73e18b";
-            const commits = context.payload.commits;
-            const issueNumbers = new Set();
-
-            for (const commit of commits) {
-              let match;
-              while ((match = issuePattern.exec(commit.message)) !== null) {
-                issueNumbers.add(Number(match[1]));
-              }
-            }
-
-            if (issueNumbers.size === 0) {
-              console.log("⚠️ No referenced issues found in commit messages.");
-              return;
-            }
-
-            const graphqlWithAuth = github.graphql.defaults({
-              headers: {
-                authorization: `Bearer ${process.env.GH_TOKEN}`,
-              },
-            });
-
-            for (const issueNumber of issueNumbers) {
-              console.log(`🔍 Processing issue #${issueNumber}`);
-
-              let issueId;
-              try {
-                const issueData = await graphqlWithAuth(`
-                  query($owner: String!, $repo: String!, $issue: Int!) {
-                    repository(owner: $owner, name: $repo) {
-                      issue(number: $issue) {
-                        id
-                      }
+                  for (const commit of commits) {
+                    let match;
+                    while ((match = issuePattern.exec(commit.message)) !== null) {
+                      issueNumbers.add(Number(match[1]));
                     }
                   }
-                `, {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue: issueNumber
-                });
 
-                issueId = issueData.repository.issue.id;
-                console.log("✅ Issue node ID:", issueId);
-              } catch (error) {
-                console.log("❌ Error fetching issue ID:", JSON.stringify(error, null, 2));
-                throw error;
-              }
+                  if (issueNumbers.size === 0) {
+                    console.log("⚠️ No issues referenced in commit.");
+                    return;
+                  }
 
-              let itemsData, itemId;
-              try {
-                itemsData = await graphqlWithAuth(`
-                  query($projectId: ID!) {
-                    node(id: $projectId) {
-                      ... on ProjectV2 {
-                        items(first: 100) {
-                          nodes {
+                  const graphqlWithAuth = github.graphql.defaults({
+                    headers: {
+                      authorization: `Bearer ${process.env.GH_TOKEN}`,
+                    },
+                  });
+
+                  for (const issueNumber of issueNumbers) {
+                    console.log(`🔍 Processing issue #${issueNumber}`);
+
+                    const issueData = await graphqlWithAuth(`
+                      query($owner: String!, $repo: String!, $issue: Int!) {
+                        repository(owner: $owner, name: $repo) {
+                          issue(number: $issue) {
                             id
-                            content {
-                              ... on Issue {
-                                id
-                                number
-                              }
-                            }
                           }
                         }
                       }
-                    }
-                  }
-                `, {
-                  projectId
-                });
+                    `, {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue: issueNumber
+                    });
 
-                console.log("🔎 Raw project items data:");
-                console.log(JSON.stringify(itemsData, null, 2));
+                    const issueId = issueData.repository.issue.id;
+                    console.log("✅ Issue node ID:", issueId);
 
-                console.log("🧾 Project item list:", JSON.stringify(itemsData, null, 2));
-
-                const items = itemsData.node?.items?.nodes || [];
-                const matchingItem = items.find(item => item.content?.number === issueNumber);
-
-                if (!matchingItem) {
-                  console.log(`⚠️ Issue #${issueNumber} is not in the project.`);
-                  continue;
-                }
-
-                itemId = matchingItem.id;
-                console.log(`✅ Found project item ID: ${itemId}`);
-              } catch (error) {
-                console.log("❌ Error fetching project item:", JSON.stringify(error, null, 2));
-                throw error;
-              }
-
-              try {
-                const updateResult = await graphqlWithAuth(`
-                  mutation {
-                    updateProjectV2ItemFieldValue(
-                      input: {
-                        projectId: "${projectId}",
-                        itemId: "${itemId}",
-                        fieldId: "${fieldId}",
-                        value: {
-                          singleSelectOptionId: "${inReviewOptionId}"
+                    const itemData = await graphqlWithAuth(`
+                      query($projectId: ID!, $contentId: ID!) {
+                        projectV2ItemByContent(projectId: $projectId, contentId: $contentId) {
+                          id
                         }
                       }
-                    ) {
-                      projectV2Item {
-                        id
-                      }
+                    `, {
+                      projectId,
+                      contentId: issueId
+                    });
+
+                    const itemId = itemData.projectV2ItemByContent?.id;
+
+                    if (!itemId) {
+                      console.log(`❌ Could not find project item for issue #${issueNumber}`);
+                      continue;
                     }
-                  }
-                `);
 
-                console.log(`🎯 Successfully updated issue #${issueNumber} to "In review"`);
-                console.log("📬 Mutation result:", JSON.stringify(updateResult, null, 2));
-              } catch (error) {
-                console.log("❌ Error updating field:", JSON.stringify(error, null, 2));
-                throw error;
-              }
-            }
+                    console.log(`📌 Found project item: ${itemId}`);
 
-            // Optional: Dump full project structure for inspection
-            try {
-              const projectDump = await graphqlWithAuth(`
-                query {
-                  organization(login: "testeo-organization") {
-                    projectsV2(first: 5) {
-                      nodes {
-                        id
-                        title
-                        fields(first: 20) {
-                          nodes {
-                            __typename
-                            ... on ProjectV2SingleSelectField {
-                              id
-                              name
-                              options {
-                                id
-                                name
-                              }
+                    await graphqlWithAuth(`
+                      mutation {
+                        updateProjectV2ItemFieldValue(
+                          input: {
+                            projectId: "${projectId}",
+                            itemId: "${itemId}",
+                            fieldId: "${fieldId}",
+                            value: {
+                              singleSelectOptionId: "${inReviewOptionId}"
                             }
+                          }
+                        ) {
+                          projectV2Item {
+                            id
                           }
                         }
                       }
-                    }
+                    `);
+
+                    console.log(`✅ Updated issue #${issueNumber} to "In review"`);
                   }
-                }
-              `);
-              console.log("📦 Full project structure:", JSON.stringify(projectDump, null, 2));
-            } catch (error) {
-              console.log("⚠️ Failed to dump full project structure:", error.message);
-            }
