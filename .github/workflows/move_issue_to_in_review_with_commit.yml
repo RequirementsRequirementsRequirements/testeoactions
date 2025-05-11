@@ -18,8 +18,8 @@ jobs:
           script: |
             const issuePattern = /(?:#|gh-)(\d+)/gi;
             const projectId = "PVT_kwDODJdNvM4A4wMz";
-            const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";
-            const inReviewOptionId = "df73e18b";
+            const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";  // "Status"
+            const inReviewOptionId = "df73e18b";               // "In review"
 
             const commits = context.payload.commits;
             const issueNumbers = new Set();
@@ -62,7 +62,7 @@ jobs:
 
               const issueId = issueData.repository.issue.id;
 
-              // Step 2: Get project item ID for this issue
+              // Step 2: Get the project item for this issue
               const itemsData = await graphqlWithAuth(`
                 query($projectId: ID!) {
                   node(id: $projectId) {
@@ -89,14 +89,14 @@ jobs:
               const matchingItem = items.find(item => item.content?.number === issueNumber);
 
               if (!matchingItem) {
-                console.log(`❌ Issue #${issueNumber} is not in the project. Skipping.`);
+                console.log(`❌ Issue #${issueNumber} not found in project.`);
                 continue;
               }
 
               const itemId = matchingItem.id;
-              console.log(`✅ Found project item ID: ${itemId}`);
+              console.log(`✅ Found item ID: ${itemId}`);
 
-              // Step 3: Update the field to "In review"
+              // Step 3: Update field to "In review"
               await graphqlWithAuth(`
                 mutation {
                   updateProjectV2ItemFieldValue(
