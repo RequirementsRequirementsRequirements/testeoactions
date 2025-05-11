@@ -10,17 +10,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Update Project field to "In review" for referenced issues
+      - name: Update Project field to "In review" for referenced issues (with debug)
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN_ACTIONS_3 }}
         uses: actions/github-script@v7
         with:
           script: |
+            const core = require("@actions/core");
+
+            console.log("🔐 Token prefix:", process.env.GH_TOKEN?.slice(0, 8));
+
             const issuePattern = /(?:#|gh-)(\d+)/gi;
             const projectId = "PVT_kwDODJdNvM4A4wMz";
-            const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";  // "Status"
-            const inReviewOptionId = "df73e18b";               // "In review"
-
+            const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";
+            const inReviewOptionId = "df73e18b";
             const commits = context.payload.commits;
             const issueNumbers = new Set();
 
@@ -32,7 +35,7 @@ jobs:
             }
 
             if (issueNumbers.size === 0) {
-              console.log("No referenced issues found.");
+              console.log("⚠️ No referenced issues found in commit messages.");
               return;
             }
 
@@ -45,35 +48,117 @@ jobs:
             for (const issueNumber of issueNumbers) {
               console.log(`🔍 Processing issue #${issueNumber}`);
 
-              // Step 1: Get the issue's node ID
-              const issueData = await graphqlWithAuth(`
-                query($owner: String!, $repo: String!, $issue: Int!) {
-                  repository(owner: $owner, name: $repo) {
-                    issue(number: $issue) {
-                      id
+              let issueId;
+              try {
+                const issueData = await graphqlWithAuth(`
+                  query($owner: String!, $repo: String!, $issue: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      issue(number: $issue) {
+                        id
+                      }
                     }
                   }
+                `, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue: issueNumber
+                });
+
+                issueId = issueData.repository.issue.id;
+                console.log("✅ Issue node ID:", issueId);
+              } catch (error) {
+                console.log("❌ Error fetching issue ID:", JSON.stringify(error, null, 2));
+                throw error;
+              }
+
+              let itemsData, itemId;
+              try {
+                itemsData = await graphqlWithAuth(`
+                  query($projectId: ID!) {
+                    node(id: $projectId) {
+                      ... on ProjectV2 {
+                        items(first: 100) {
+                          nodes {
+                            id
+                            content {
+                              ... on Issue {
+                                id
+                                number
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                `, {
+                  projectId
+                });
+
+                console.log("🧾 Project item list:", JSON.stringify(itemsData, null, 2));
+
+                const items = itemsData.node?.items?.nodes || [];
+                const matchingItem = items.find(item => item.content?.number === issueNumber);
+
+                if (!matchingItem) {
+                  console.log(`⚠️ Issue #${issueNumber} is not in the project.`);
+                  continue;
                 }
-              `, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue: issueNumber
-              });
 
-              const issueId = issueData.repository.issue.id;
+                itemId = matchingItem.id;
+                console.log(`✅ Found project item ID: ${itemId}`);
+              } catch (error) {
+                console.log("❌ Error fetching project item:", JSON.stringify(error, null, 2));
+                throw error;
+              }
 
-              // Step 2: Get the project item for this issue
-              const itemsData = await graphqlWithAuth(`
-                query($projectId: ID!) {
-                  node(id: $projectId) {
-                    ... on ProjectV2 {
-                      items(first: 100) {
-                        nodes {
-                          id
-                          content {
-                            ... on Issue {
+              try {
+                const updateResult = await graphqlWithAuth(`
+                  mutation {
+                    updateProjectV2ItemFieldValue(
+                      input: {
+                        projectId: "${projectId}",
+                        itemId: "${itemId}",
+                        fieldId: "${fieldId}",
+                        value: {
+                          singleSelectOptionId: "${inReviewOptionId}"
+                        }
+                      }
+                    ) {
+                      projectV2Item {
+                        id
+                      }
+                    }
+                  }
+                `);
+
+                console.log(`🎯 Successfully updated issue #${issueNumber} to "In review"`);
+                console.log("📬 Mutation result:", JSON.stringify(updateResult, null, 2));
+              } catch (error) {
+                console.log("❌ Error updating field:", JSON.stringify(error, null, 2));
+                throw error;
+              }
+            }
+
+            // Optional: Dump full project structure for inspection
+            try {
+              const projectDump = await graphqlWithAuth(`
+                query {
+                  organization(login: "testeo-organization") {
+                    projectsV2(first: 5) {
+                      nodes {
+                        id
+                        title
+                        fields(first: 20) {
+                          nodes {
+                            __typename
+                            ... on ProjectV2SingleSelectField {
                               id
-                              number
+                              name
+                              options {
+                                id
+                                name
+                              }
                             }
                           }
                         }
@@ -81,40 +166,8 @@ jobs:
                     }
                   }
                 }
-              `, {
-                projectId
-              });
-
-              const items = itemsData.node.items.nodes;
-              const matchingItem = items.find(item => item.content?.number === issueNumber);
-
-              if (!matchingItem) {
-                console.log(`❌ Issue #${issueNumber} not found in project.`);
-                continue;
-              }
-
-              const itemId = matchingItem.id;
-              console.log(`✅ Found item ID: ${itemId}`);
-
-              // Step 3: Update field to "In review"
-              await graphqlWithAuth(`
-                mutation {
-                  updateProjectV2ItemFieldValue(
-                    input: {
-                      projectId: "${projectId}",
-                      itemId: "${itemId}",
-                      fieldId: "${fieldId}",
-                      value: {
-                        singleSelectOptionId: "${inReviewOptionId}"
-                      }
-                    }
-                  ) {
-                    projectV2Item {
-                      id
-                    }
-                  }
-                }
               `);
-
-              console.log(`🎯 Updated issue #${issueNumber} to "In review"`);
+              console.log("📦 Full project structure:", JSON.stringify(projectDump, null, 2));
+            } catch (error) {
+              console.log("⚠️ Failed to dump full project structure:", error.message);
             }
