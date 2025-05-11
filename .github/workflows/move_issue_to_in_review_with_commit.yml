@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Update Project field to "In review" for referenced issues
         env:
-          GH_TOKEN: ${{ secrets.GH_PROJECTS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PROJECTS_TOKEN_2 }}
         uses: actions/github-script@v7
         with:
           script: |
