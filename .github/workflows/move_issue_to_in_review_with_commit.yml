@@ -20,7 +20,7 @@ jobs:
             console.log("🔐 Token prefix:", process.env.GH_TOKEN?.slice(0, 8));
 
             const issuePattern = /(?:#|gh-)(\d+)/gi;
-            const projectId = "PVT_kwDODJdNvM4A4wMz";
+            const projectId = "PVT_kwDODJdNvM4A4wSl";
             const fieldId = "PVTSSF_lADODJdNvM4A4wMzzgtqqm4";
             const inReviewOptionId = "df73e18b";
             const commits = context.payload.commits;
