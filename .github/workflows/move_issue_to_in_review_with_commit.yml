@@ -1,26 +1,26 @@
-name: Move issue to "In review" on commit reference
+name: Move issue to "In review" when referenced
 
 on:
   push:
     branches:
-      - main  # Or your active branch
+      - main  # Or your working branch
 
 jobs:
-  move-card:
+  move-to-in-review:
     runs-on: ubuntu-latest
     permissions:
       issues: write
       contents: read
-      project: write  # Required to move cards in projects
+      project: write
 
     steps:
-      - name: Extract issues from commits and move cards
+      - name: Move issue cards to "In review"
         uses: actions/github-script@v7
         with:
           script: |
             const issuePattern = /(?:#|gh-)(\d+)/gi;
             const projectName = 'testeo actions';
-            const targetColumn = 'In review';
+            const targetColumnName = 'In review';
 
             const commits = context.payload.commits;
             const issueNumbers = new Set();
@@ -33,11 +33,10 @@ jobs:
             }
 
             if (issueNumbers.size === 0) {
-              console.log("No referenced issues found in commit messages.");
+              console.log("No referenced issues found.");
               return;
             }
 
-            // Get repo projects
             const { data: projects } = await github.rest.projects.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo
@@ -49,44 +48,45 @@ jobs:
               return;
             }
 
-            // Get all columns in the project
             const { data: columns } = await github.rest.projects.listColumns({
               project_id: project.id
             });
 
-            const targetCol = columns.find(c => c.name.toLowerCase() === targetColumn.toLowerCase());
-            if (!targetCol) {
-              core.setFailed(`Target column "${targetColumn}" not found.`);
+            const targetColumn = columns.find(c => c.name.toLowerCase() === targetColumnName.toLowerCase());
+            if (!targetColumn) {
+              core.setFailed(`Column "${targetColumnName}" not found.`);
               return;
             }
 
-            // Look through ALL columns to find matching issue card
             for (const issueNumber of issueNumbers) {
-              let cardFound = false;
+              console.log(`Processing issue #${issueNumber}...`);
 
-              for (const col of columns) {
+              let cardMoved = false;
+
+              for (const column of columns) {
                 const { data: cards } = await github.rest.projects.listCards({
-                  column_id: col.id
+                  column_id: column.id
                 });
 
                 for (const card of cards) {
                   if (card.content_url && card.content_url.endsWith(`/issues/${issueNumber}`)) {
-                    // Move the card
+                    console.log(`Found card for issue #${issueNumber} in column "${column.name}". Moving to "${targetColumnName}"...`);
+
                     await github.rest.projects.moveCard({
                       card_id: card.id,
                       position: 'top',
-                      column_id: targetCol.id
+                      column_id: targetColumn.id
                     });
-                    console.log(`Moved issue #${issueNumber} to "${targetColumn}"`);
-                    cardFound = true;
+
+                    cardMoved = true;
                     break;
                   }
                 }
 
-                if (cardFound) break;
+                if (cardMoved) break;
               }
 
-              if (!cardFound) {
-                console.log(`No card found for issue #${issueNumber}. Is it added to the project "${projectName}"?`);
+              if (!cardMoved) {
+                console.log(`No project card found for issue #${issueNumber}.`);
               }
             }
