@@ -94,6 +94,9 @@ jobs:
                   projectId
                 });
 
+                console.log("🔎 Raw project items data:");
+                console.log(JSON.stringify(itemsData, null, 2));
+
                 console.log("🧾 Project item list:", JSON.stringify(itemsData, null, 2));
 
                 const items = itemsData.node?.items?.nodes || [];
