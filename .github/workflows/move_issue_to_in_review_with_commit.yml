@@ -1,0 +1,91 @@
+name: Move issue to "In review" on commit reference
+
+on:
+  push:
+    branches:
+      - main  # Or your active branch
+
+jobs:
+  move-card:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      project: write  # Required to move cards in projects
+
+    steps:
+      - name: Extract issues from commits and move cards
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issuePattern = /(?:#|gh-)(\d+)/gi;
+            const projectName = 'testeo actions';
+            const targetColumn = 'In review';
+
+            const commits = context.payload.commits;
+            const issueNumbers = new Set();
+
+            for (const commit of commits) {
+              let match;
+              while ((match = issuePattern.exec(commit.message)) !== null) {
+                issueNumbers.add(Number(match[1]));
+              }
+            }
+
+            for (const issueNumber of issueNumbers) {
+              // Get all projects for this repo
+              const { data: projects } = await github.rest.projects.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+
+              const project = projects.find(p => p.name.toLowerCase() === projectName.toLowerCase());
+              if (!project) {
+                core.warning(`Project "${projectName}" not found`);
+                continue;
+              }
+
+              // Get columns for the project
+              const { data: columns } = await github.rest.projects.listColumns({
+                project_id: project.id
+              });
+
+              const column = columns.find(c => c.name.toLowerCase() === targetColumn.toLowerCase());
+              if (!column) {
+                core.warning(`Column "${targetColumn}" not found`);
+                continue;
+              }
+
+              // Find project card for the issue
+              const { data: cards } = await github.rest.projects.listCards({
+                column_id: column.id
+              });
+
+              let cardFound = false;
+
+              for (const col of columns) {
+                const { data: cardsInCol } = await github.rest.projects.listCards({
+                  column_id: col.id
+                });
+
+                for (const card of cardsInCol) {
+                  if (card.content_url && card.content_url.endsWith(`/issues/${issueNumber}`)) {
+                    cardFound = true;
+                    // Move the card
+                    await github.rest.projects.moveCard({
+                      card_id: card.id,
+                      position: 'top',
+                      column_id: column.id
+                    });
+                    console.log(`Moved issue #${issueNumber} to "${targetColumn}"`);
+                    break;
+                  }
+                }
+
+                if (cardFound) break;
+              }
+
+              if (!cardFound) {
+                console.log(`No project card found for issue #${issueNumber}`);
+              }
+            }
