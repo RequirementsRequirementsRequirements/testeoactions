@@ -12,7 +12,7 @@ jobs:
     steps:
                   - name: Move issue to "In review"
                     env:
-                      GH_TOKEN: ${{ secrets.GH_TOKEN_ACTIONS_3 }}
+                      GH_TOKEN: ${{ secrets.GH_SECRET_TOKEN }}
                     uses: actions/github-script@v7
                     with:
                       script: |
