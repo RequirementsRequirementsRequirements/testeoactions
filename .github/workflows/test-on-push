@@ -1,0 +1,53 @@
+name: Run Full Test Suite
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.12]
+
+    defaults:
+      run:
+        # Ajusta esto si tu código fuente y tests no están en la raíz
+        working-directory: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Create local data directories
+        run: |
+          mkdir -p $HOME/.local/share/delfos-sdk
+          mkdir -p $HOME/.local/state/delfos-sdk
+
+      - name: Install project packages in editable mode
+        run: |
+          # Ajusta las rutas según la estructura de tu repo
+          pip install -e /delfos-sdk/sdk/core/delfos-sdk-core/
+          pip install -e /delfos-sdk/sdk/infra/delfos-sdk-mockup/
+          pip install -e /delfos-sdk/sdk/infra/delfos-sdk-sqlite/
+          pip install -e /delfos-sdk/sdk/infra/delfos-sdk-deployment/
+          pip install -e /delfos-sdk/sdk/infra/delfos-sdk-ssh/
+          pip install -e /delfos-sdk/sdk/controllers/delfos-api-rest/
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: Run all tests
+        run: |
+          # Detecta automáticamente todos los tests bajo cualquier carpeta tests/
+          pytest --maxfail=1 --disable-warnings -q
