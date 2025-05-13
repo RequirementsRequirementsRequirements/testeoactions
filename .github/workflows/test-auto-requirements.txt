@@ -1,0 +1,15 @@
+FASTAPI
+uvicorn
+python.dotenv
+slowapi
+uvicorn
+httpx
+freezegun
+casbin
+pytest
+casbin_sqlalchemy_adapter
+PyJWT
+platformdirs
+freezegun
+wakeonlan
+fabric
